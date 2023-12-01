@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+
+contract ArWorldContract is ERC721, ERC721URIStorage, Ownable {
+    using Address for address payable;
+
+    event SaveDataEvent(
+        address dataAddress,
+        string dataType,
+        string dataCid,
+        string dataExt
+    );
+
+    // system data: string(data type) => string
+    mapping(string => string) private metaData;
+    // user data: string(data type) => string(ipfs cid)
+    mapping(address => mapping(string => string[])) private cidData;
+    // user data: dataCid mapping tokenId
+    mapping(string => uint256) public dataCidToTokenId;
+    // nft token_id
+    uint256 private _nextTokenId;
+
+    constructor(address initialOwner)
+    ERC721("AR-World", "AW")
+    Ownable(initialOwner)
+    {}
+
+    function supportsInterface(bytes4 interfaceId)
+    public
+    view
+    override(ERC721, ERC721URIStorage)
+    returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
+     * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
+     * by default, can be overridden in child contracts.
+     */
+    function _baseURI() internal pure override returns (string memory) {
+        return "ipfs://";
+    }
+
+    function tokenURI(uint256 tokenId)
+    public
+    view
+    override(ERC721, ERC721URIStorage)
+    returns (string memory)
+    {
+        return super.tokenURI(tokenId);
+    }
+
+    /**
+     * mint user data
+     */
+    function mint(
+        string memory dataType,
+        string memory dataCid,
+        string memory dataExt,
+        string memory tokenUri
+    ) public payable {
+        uint256 tokenId = _nextTokenId++;
+
+        dataCidToTokenId[dataCid] = tokenId;
+        saveCidData(dataType, dataCid, dataExt);
+        _safeMint(_msgSender(), tokenId);
+        _setTokenURI(tokenId, tokenUri);
+    }
+
+    /**
+     * delete user data
+     */
+    function deleteCidData(
+        string memory dataType,
+        string memory dataCid,
+        string memory dataExt
+    ) public payable {
+        // delete user data
+        string[] storage dataArray = cidData[_msgSender()][dataType];
+        removeElement(dataArray, dataCid);
+
+        // emit event
+        emit SaveDataEvent(_msgSender(), dataType, dataCid, dataExt);
+    }
+
+    /**
+     * save user data
+     */
+    function saveCidData(
+        string memory dataType,
+        string memory dataCid,
+        string memory dataExt
+    ) public payable {
+        cidData[_msgSender()][dataType].push(dataCid);
+        emit SaveDataEvent(_msgSender(), dataType, dataCid, dataExt);
+    }
+
+    /**
+     * get user data
+     */
+    function getCidData(address owner, string memory dataType)
+    public
+    view
+    returns (string[] memory)
+    {
+        return cidData[owner][dataType];
+    }
+
+    /**
+     * set system data
+     */
+    function saveMetaData(string memory dataType, string memory data)
+    public
+    onlyOwner
+    {
+        metaData[dataType] = data;
+    }
+
+    /**
+     * get system data
+     */
+    function getMetaData(string memory dataType)
+    public
+    view
+    returns (string memory)
+    {
+        return metaData[dataType];
+    }
+
+    /**
+     * withdraw fund
+     */
+    function withdraw(address payable dest, uint256 amount)
+    public
+    virtual
+    onlyOwner
+    {
+        dest.sendValue(amount);
+    }
+
+    /**
+     * remove array element
+     */
+    function removeElement(string[] storage array, string memory element)
+    internal
+    {
+        for (uint256 i1 = 0; i1 < array.length; i1++) {
+            if (keccak256(bytes(array[i1])) == keccak256(bytes(element))) {
+                // move all elements following the element to be removed forward by one position
+                for (uint256 i2 = i1 + 1; i2 < array.length; i2++) {
+                    array[i2 - 1] = array[i2];
+                }
+
+                // delete last element
+                array.pop();
+                return;
+            }
+        }
+    }
+}
